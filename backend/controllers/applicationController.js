@@ -37,6 +37,15 @@ exports.applyToStartup = async (req, res) => {
         createdAt: new Date().toISOString()
       };
       MEMORY_APPLICATIONS.push(newApp);
+      try {
+        const { createNotificationInternal } = require('./notificationController');
+        await createNotificationInternal(
+          "mock-founder-id",
+          'application',
+          'New Application Received',
+          `${req.user.name || 'Alex Johnson'} applied for the ${role} role.`
+        );
+      } catch (e) {}
       return res.status(201).json(newApp);
     }
 
@@ -57,6 +66,18 @@ exports.applyToStartup = async (req, res) => {
     await application.save();
     startup.applicationsCount += 1;
     await startup.save();
+
+    try {
+      const { createNotificationInternal } = require('./notificationController');
+      await createNotificationInternal(
+        startup.founder,
+        'application',
+        'New Application Received',
+        `${req.user.name || 'A collaborator'} applied for the ${role} role at ${startup.name}.`
+      );
+    } catch (notifErr) {
+      console.warn("Failed to create application notification:", notifErr.message);
+    }
 
     res.status(201).json(application);
   } catch (error) {
@@ -117,16 +138,39 @@ exports.updateApplicationStatus = async (req, res) => {
       const application = MEMORY_APPLICATIONS.find(app => app._id === req.params.id);
       if (!application) return res.status(404).json({ message: 'Application not found' });
       application.status = status;
+      try {
+        const { createNotificationInternal } = require('./notificationController');
+        createNotificationInternal(
+          application.applicant?._id || application.applicant,
+          'application',
+          `Application ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+          `NeuralCart has ${status} your application for the ${application.role || 'Collaborator'} role.`
+        );
+      } catch (e) {}
       return res.json(application);
     }
 
-    const application = await Application.findById(req.params.id);
+    const application = await Application.findById(req.params.id).populate('startup');
     
     if (!application) return res.status(404).json({ message: 'Application not found' });
     if (application.founder.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
 
     application.status = status;
     await application.save();
+
+    try {
+      const { createNotificationInternal } = require('./notificationController');
+      const startupName = application.startup?.name || 'a startup';
+      await createNotificationInternal(
+        application.applicant,
+        'application',
+        `Application ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+        `${startupName} has ${status} your application for the ${application.role} role.`
+      );
+    } catch (notifErr) {
+      console.warn("Failed to create application status notification:", notifErr.message);
+    }
+
     res.json(application);
   } catch (error) {
     res.status(400).json({ message: error.message });

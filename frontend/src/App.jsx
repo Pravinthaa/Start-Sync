@@ -470,9 +470,10 @@ function AuthPage({ type, onNavigate, onLogin }) {
 }
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
-function AppShell({ user, onLogout, children, activePage, onNavigate, notifCount }) {
+function AppShell({ user, onLogout, children, activePage, onNavigate, notifications = [], onMarkRead, onMarkAllRead }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const isFounder = user.role === "Founder";
+  const notifCount = notifications.filter(n => !n.read).length;
 
   const navItems = isFounder
     ? [
@@ -553,19 +554,33 @@ function AppShell({ user, onLogout, children, activePage, onNavigate, notifCount
           <div style={{ position: "absolute", top: 70, right: 20, zIndex: 200, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 14, width: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
             <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontWeight: 700, color: C.text, fontSize: 14 }}>Notifications</span>
-              <span style={{ fontSize: 12, color: C.accent, cursor: "pointer" }}>Mark all read</span>
+              <span style={{ fontSize: 12, color: C.accent, cursor: "pointer" }} onClick={onMarkAllRead}>Mark all read</span>
             </div>
-            {NOTIFICATIONS.map(n => (
-              <div key={n.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 10, background: n.read ? "transparent" : `${C.accent}08`, cursor: "pointer" }}>
-                <span style={{ fontSize: 20 }}>{n.icon}</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{n.title}</div>
-                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{n.body}</div>
-                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{n.time}</div>
+            <div style={{ maxHeight: 360, overflowY: "auto" }}>
+              {notifications.length === 0 ? (
+                <div style={{ padding: "24px 16px", textAlign: "center", color: C.textMuted, fontSize: 13 }}>
+                  No notifications yet
                 </div>
-                {!n.read && <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.accent, flexShrink: 0, marginTop: 4 }} />}
-              </div>
-            ))}
+              ) : (
+                notifications.map(n => {
+                  const icon = n.icon || (n.type === "application" ? "📋" : n.type === "message" ? "💬" : "🎯");
+                  const dateStr = n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (n.time || "Just now");
+                  const notifId = n._id || n.id;
+                  return (
+                    <div key={notifId} onClick={() => onMarkRead && onMarkRead(notifId)}
+                      style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 10, background: n.read ? "transparent" : `${C.accent}08`, cursor: "pointer" }}>
+                      <span style={{ fontSize: 20 }}>{icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{n.title}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{n.body}</div>
+                        <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{dateStr}</div>
+                      </div>
+                      {!n.read && <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.accent, flexShrink: 0, marginTop: 4 }} />}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
 
@@ -1576,7 +1591,7 @@ export default function StartSync() {
   const [savedIds, setSavedIds] = useState([2, 4]);
   const [applications, setApplications] = useState(APPLICATIONS);
   const [startups, setStartups] = useState(STARTUPS);
-  const notifCount = 2;
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -1642,6 +1657,20 @@ export default function StartSync() {
                 setApplications(appsRes.data);
               }
             }
+
+            // Fetch notifications
+            try {
+              const notifsRes = await axios.get("http://localhost:5000/api/notifications", authHeader);
+              if (notifsRes.data && Array.isArray(notifsRes.data)) {
+                setNotifications(notifsRes.data);
+              }
+            } catch (notifErr) {
+              console.warn("MERN notifications fetch warning:", notifErr.message);
+              setNotifications([
+                { _id: "notif-1", type: "application", title: "Application Shortlisted", body: "NeuralCart shortlisted your application for React Dev role", time: "2m ago", read: false, icon: "⚡" },
+                { _id: "notif-2", type: "message", title: "New Message", body: "Lena Weber sent you a message about GreenTrack", time: "1h ago", read: false, icon: "💬" }
+              ]);
+            }
           }
         } catch (err) {
           console.warn("MERN applications fetch warning:", err.message);
@@ -1649,6 +1678,28 @@ export default function StartSync() {
       }
     };
     loadData();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = localStorage.getItem("token");
+    if (!token || token.startsWith("mock-")) return;
+
+    const fetchNotifications = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/notifications", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data && Array.isArray(res.data)) {
+          setNotifications(res.data);
+        }
+      } catch (err) {
+        console.warn("Polling notifications failed:", err.message);
+      }
+    };
+
+    const interval = setInterval(fetchNotifications, 8000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const navigate = p => setPage(p);
@@ -1674,6 +1725,34 @@ export default function StartSync() {
     }
   };
 
+  const handleMarkRead = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token && !token.startsWith("mock-")) {
+        await axios.put(`http://localhost:5000/api/notifications/${id}/read`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to mark notification read:", err.message);
+    }
+    setNotifications(prev => prev.map(n => (n._id === id || n.id === id) ? { ...n, read: true } : n));
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token && !token.startsWith("mock-")) {
+        await axios.put("http://localhost:5000/api/notifications/mark-all-read", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to mark all notifications read:", err.message);
+    }
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
   const handleLogin = u => {
     setUser(u);
     if (u.token) localStorage.setItem("token", u.token);
@@ -1683,7 +1762,12 @@ export default function StartSync() {
     else setPage("collab-dashboard");
   };
 
-  const handleLogout = () => { setUser(null); localStorage.removeItem("token"); setPage("landing"); };
+  const handleLogout = () => { 
+    setUser(null); 
+    setNotifications([]); 
+    localStorage.removeItem("token"); 
+    setPage("landing"); 
+  };
   const toggleSave = id => setSavedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
   if (!user && page === "landing") {
@@ -1730,7 +1814,7 @@ export default function StartSync() {
   };
 
   return (
-    <AppShell user={user} onLogout={handleLogout} activePage={page} onNavigate={navigate} notifCount={notifCount}>
+    <AppShell user={user} onLogout={handleLogout} activePage={page} onNavigate={navigate} notifications={notifications} onMarkRead={handleMarkRead} onMarkAllRead={handleMarkAllRead}>
       {renderPage()}
     </AppShell>
   );
