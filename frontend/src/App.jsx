@@ -578,11 +578,11 @@ function AppShell({ user, onLogout, children, activePage, onNavigate, notifCount
 }
 
 // ─── Collaborator Dashboard ───────────────────────────────────────────────────
-function CollabDashboard({ user, onNavigate, startups = STARTUPS }) {
+function CollabDashboard({ user, onNavigate, startups = STARTUPS, applications = [], savedIds = [] }) {
   const stats = [
-    { label: "Applications Sent", value: 4, icon: "📋", color: C.accent },
-    { label: "Shortlisted", value: 2, icon: "⚡", color: C.warning },
-    { label: "Saved Startups", value: 3, icon: "🔖", color: C.teal },
+    { label: "Applications Sent", value: applications.length, icon: "📋", color: C.accent },
+    { label: "Shortlisted", value: applications.filter(a => a.status === "shortlisted").length, icon: "⚡", color: C.warning },
+    { label: "Saved Startups", value: savedIds.length, icon: "🔖", color: C.teal },
     { label: "New Messages", value: 1, icon: "💬", color: C.pink },
   ];
 
@@ -608,23 +608,36 @@ function CollabDashboard({ user, onNavigate, startups = STARTUPS }) {
             <span style={{ fontSize: 13, color: C.accent, cursor: "pointer" }} onClick={() => onNavigate("collab-applications")}>View all →</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {APPLICATIONS.map(app => (
-              <Card key={app.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px" }}>
-                <span style={{ fontSize: 26 }}>{app.logo}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{app.startup}</div>
-                  <div style={{ fontSize: 13, color: C.textMuted }}>{app.role} · Applied {app.applied}</div>
-                </div>
-                <StatusBadge status={app.status} />
+            {applications.length === 0 ? (
+              <Card style={{ textAlign: "center", padding: "1.5rem", color: C.textMuted }}>
+                You haven't applied to any startups yet.
               </Card>
-            ))}
+            ) : (
+              applications.slice(0, 3).map(app => {
+                const startupName = typeof app.startup === 'object' ? app.startup?.name : (app.startup || "My Startup");
+                const startupLogo = typeof app.startup === 'object' ? (app.startup?.logo || "🚀") : (app.logo || "🚀");
+                const dateApplied = app.createdAt ? new Date(app.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : (app.applied || "Just now");
+                const appId = app._id || app.id;
+
+                return (
+                  <Card key={appId} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px" }}>
+                    <span style={{ fontSize: 26 }}>{startupLogo}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: C.text, fontSize: 14 }}>{startupName}</div>
+                      <div style={{ fontSize: 13, color: C.textMuted }}>{app.role} · Applied {dateApplied}</div>
+                    </div>
+                    <StatusBadge status={app.status} />
+                  </Card>
+                );
+              })
+            )}
           </div>
         </div>
         <div>
           <h3 style={{ color: C.text, fontWeight: 700, margin: "0 0 12px", fontSize: 15 }}>Recommended For You</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {startups.slice(0, 3).map(s => (
-              <Card key={s.id} hover style={{ padding: "12px 14px" }} onClick={() => onNavigate("browse")}>
+              <Card key={s.id || s._id} hover style={{ padding: "12px 14px" }} onClick={() => onNavigate("browse")}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <span style={{ fontSize: 22 }}>{s.logo}</span>
                   <div style={{ flex: 1 }}>
@@ -1219,7 +1232,18 @@ function AdminDashboard() {
 }
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
-function ProfilePage({ user, onProfileUpdate }) {
+function ProfilePage({ user, onProfileUpdate, applications = [] }) {
+  const acceptedApp = applications.find(a => a.status === "accepted");
+  const shortlistedApp = applications.find(a => a.status === "shortlisted");
+
+  let statusBadge = <Badge color={C.success} bg={`${C.success}18`}>● Available</Badge>;
+  if (acceptedApp) {
+    const sName = typeof acceptedApp.startup === 'object' ? acceptedApp.startup?.name : acceptedApp.startup;
+    statusBadge = <Badge color={C.teal} bg={`${C.teal}18`}>● Joined {sName}</Badge>;
+  } else if (shortlistedApp) {
+    const sName = typeof shortlistedApp.startup === 'object' ? shortlistedApp.startup?.name : shortlistedApp.startup;
+    statusBadge = <Badge color={C.warning} bg={`${C.warning}18`}>● Shortlisted: {sName}</Badge>;
+  }
   const [form, setForm] = useState({
     name: user.name,
     bio: "",
@@ -1300,7 +1324,7 @@ function ProfilePage({ user, onProfileUpdate }) {
           <div>
             <div style={{ fontWeight: 800, color: C.text, fontSize: 18 }}>{form.name}</div>
             <div style={{ fontSize: 14, color: C.textMuted, marginTop: 4 }}>{user.role}{form.location ? ` · ${form.location}` : ""}</div>
-            <div style={{ marginTop: 6 }}><Badge color={C.success} bg={`${C.success}18`}>● Available</Badge></div>
+            <div style={{ marginTop: 6 }}>{statusBadge}</div>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
@@ -1633,7 +1657,7 @@ export default function StartSync() {
     try {
       const token = localStorage.getItem("token");
       if (token && !token.startsWith("mock-")) {
-        const res = await axios.put(`http://localhost:5000/api/applications/${id}`, { status }, {
+        const res = await axios.put(`http://localhost:5000/api/applications/${id}/status`, { status }, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.data) {
@@ -1688,12 +1712,12 @@ export default function StartSync() {
 
   const renderPage = () => {
     switch (page) {
-      case "collab-dashboard": return <CollabDashboard user={user} onNavigate={navigate} startups={startups} />;
+      case "collab-dashboard": return <CollabDashboard user={user} onNavigate={navigate} startups={startups} applications={applications} savedIds={savedIds} />;
       case "browse": return <BrowsePage savedIds={savedIds} onToggleSave={toggleSave} onMessage={() => navigate("messages")} startups={startups} setApplications={setApplications} />;
       case "collab-applications": return <ApplicationsPage apps={applications} isFounder={false} />;
       case "collab-saved": return <SavedPage savedIds={savedIds} onToggleSave={toggleSave} onNavigate={navigate} />;
       case "messages": return <MessagesPage user={user} />;
-      case "profile": return <ProfilePage user={user} onProfileUpdate={updatedUser => setUser(prev => ({ ...prev, ...updatedUser }))} />;
+      case "profile": return <ProfilePage user={user} onProfileUpdate={updatedUser => setUser(prev => ({ ...prev, ...updatedUser }))} applications={applications} />;
       case "founder-dashboard": return <FounderDashboard user={user} onNavigate={navigate} startups={startups} applications={applications} />;
       case "founder-startups": return <FounderStartupsPage startups={startups} setStartups={setStartups} user={user} />;
       case "founder-applications": return <ApplicationsPage apps={applications} isFounder={true} onStatusUpdate={handleStatusUpdate} />;
@@ -1701,7 +1725,7 @@ export default function StartSync() {
       case "admin-dashboard": return <AdminDashboard />;
       case "admin-users": return <AdminDashboard />;
       case "admin-startups": return <AdminDashboard />;
-      default: return <CollabDashboard user={user} onNavigate={navigate} startups={startups} />;
+      default: return <CollabDashboard user={user} onNavigate={navigate} startups={startups} applications={applications} savedIds={savedIds} />;
     }
   };
 
