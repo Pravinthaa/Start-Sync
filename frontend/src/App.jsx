@@ -828,7 +828,7 @@ function BrowsePage({ onApply, savedIds, onToggleSave, onMessage, startups = STA
 }
 
 // ─── Applications Page ────────────────────────────────────────────────────────
-function ApplicationsPage({ apps = APPLICATIONS }) {
+function ApplicationsPage({ apps = APPLICATIONS, isFounder = false, onStatusUpdate }) {
   const [filter, setFilter] = useState("all");
 
   const filtered = filter === "all" ? apps : apps.filter(a => a.status === filter);
@@ -836,34 +836,125 @@ function ApplicationsPage({ apps = APPLICATIONS }) {
   return (
     <div>
       <div style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ color: C.text, fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>My Applications</h1>
+        <h1 style={{ color: C.text, fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>
+          {isFounder ? "Received Applications" : "My Applications"}
+        </h1>
         <p style={{ color: C.textMuted, fontSize: 14 }}>{apps.length} total applications</p>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem", flexWrap: "wrap" }}>
-        {["all", "pending", "shortlisted", "accepted", "rejected"].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            style={{ padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer", border: filter === s ? `1px solid ${C.accent}` : `1px solid ${C.border}`, background: filter === s ? `${C.accent}22` : "transparent", color: filter === s ? C.accentLight : C.textMuted, transition: "all 0.2s" }}>
-            {s.charAt(0).toUpperCase() + s.slice(1)} ({s === "all" ? apps.length : apps.filter(a => a.status === s).length})
-          </button>
-        ))}
+        {["all", "pending", "shortlisted", "accepted", "rejected"].map(s => {
+          const count = s === "all" ? apps.length : apps.filter(a => a.status === s).length;
+          return (
+            <button key={s} onClick={() => setFilter(s)}
+              style={{ padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: "pointer", border: filter === s ? `1px solid ${C.accent}` : `1px solid ${C.border}`, background: filter === s ? `${C.accent}22` : "transparent", color: filter === s ? C.accentLight : C.textMuted, transition: "all 0.2s" }}>
+              {s.charAt(0).toUpperCase() + s.slice(1)} ({count})
+            </button>
+          );
+        })}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {filtered.map(app => (
-          <Card key={app.id}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ fontSize: 32 }}>{app.logo}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 2 }}>{app.startup}</div>
-                <div style={{ fontSize: 13, color: C.textMuted }}>Role: {app.role}</div>
-                <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>Applied {app.applied} · Founder: {app.founder}</div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Badge color={C.textMuted} bg={`${C.textMuted}18`}>{app.compensation}</Badge>
-                <StatusBadge status={app.status} />
-              </div>
-            </div>
+        {filtered.length === 0 ? (
+          <Card style={{ textAlign: "center", padding: "2rem", color: C.textMuted }}>
+            No applications found matching the filter.
           </Card>
-        ))}
+        ) : (
+          filtered.map(app => {
+            const startupName = typeof app.startup === 'object' ? app.startup?.name : (app.startup || "My Startup");
+            const startupLogo = typeof app.startup === 'object' ? (app.startup?.logo || "🚀") : (app.logo || "🚀");
+            const dateApplied = app.createdAt ? new Date(app.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : (app.applied || "Just now");
+            const compensationVal = app.compensation || (typeof app.startup === 'object' ? app.startup?.compensation : null) || "Equity";
+            const appId = app._id || app.id;
+
+            if (isFounder) {
+              const applicantName = typeof app.applicant === 'object' ? app.applicant?.name : (app.applicant || "New Candidate");
+              const applicantEmail = typeof app.applicant === 'object' ? app.applicant?.email : "";
+              const applicantSkills = typeof app.applicant === 'object' ? app.applicant?.skills || [] : [];
+              const applicantAvatar = typeof app.applicant === 'object' ? app.applicant?.avatar : null;
+              const initials = applicantName.split(" ").map(n => n[0]).join("").slice(0, 2);
+
+              return (
+                <Card key={appId} style={{ padding: "16px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                      <Avatar initials={applicantAvatar || initials} size={42} />
+                      <div>
+                        <div style={{ fontWeight: 700, color: C.text, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
+                          {applicantName}
+                          <Badge color={C.teal} bg={`${C.teal}18`}>{startupName}</Badge>
+                        </div>
+                        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 2 }}>
+                          Applied for: <span style={{ color: C.text, fontWeight: 600 }}>{app.role}</span>
+                        </div>
+                        {applicantEmail && (
+                          <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>✉ {applicantEmail}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: C.textDim }}>Applied {dateApplied}</span>
+                      <StatusBadge status={app.status} />
+                    </div>
+                  </div>
+
+                  {app.coverMessage && (
+                    <div style={{ background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>
+                      <div style={{ fontWeight: 600, color: C.text, fontSize: 11, textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.5 }}>Cover Message</div>
+                      "{app.coverMessage}"
+                    </div>
+                  )}
+
+                  {applicantSkills.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                      {applicantSkills.map(sk => <Tag key={sk}>{sk}</Tag>)}
+                    </div>
+                  )}
+
+                  {onStatusUpdate && (
+                    <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      {app.status === "pending" ? (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={() => onStatusUpdate(appId, "rejected")} style={{ color: C.danger }}>Reject</Button>
+                          <Button size="sm" variant="secondary" onClick={() => onStatusUpdate(appId, "shortlisted")}>Shortlist ⚡</Button>
+                          <Button size="sm" onClick={() => onStatusUpdate(appId, "accepted")}>Accept Candidate ✓</Button>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 12, color: C.textDim }}>
+                          Status updated to <span style={{ textTransform: "capitalize", color: C.accentLight, fontWeight: 600 }}>{app.status}</span>. Change status:
+                          <select value={app.status} onChange={e => onStatusUpdate(appId, e.target.value)}
+                            style={{ marginLeft: 8, background: C.bgCard2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 8px", color: C.text, fontSize: 12, cursor: "pointer" }}>
+                            <option value="pending">Pending</option>
+                            <option value="shortlisted">Shortlisted</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            }
+
+            // Collaborator view
+            const founderName = typeof app.founder === 'object' ? app.founder?.name : (app.founder || "Founder");
+            return (
+              <Card key={appId}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{ fontSize: 32 }}>{startupLogo}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 2 }}>{startupName}</div>
+                    <div style={{ fontSize: 13, color: C.textMuted }}>Role: {app.role}</div>
+                    <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>Applied {dateApplied} · Founder: {founderName}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Badge color={C.textMuted} bg={`${C.textMuted}18`}>{compensationVal}</Badge>
+                    <StatusBadge status={app.status} />
+                  </div>
+                </div>
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -1538,6 +1629,27 @@ export default function StartSync() {
 
   const navigate = p => setPage(p);
 
+  const handleStatusUpdate = async (id, status) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token && !token.startsWith("mock-")) {
+        const res = await axios.put(`http://localhost:5000/api/applications/${id}`, { status }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data) {
+          setApplications(prev => prev.map(app => (app._id === id || app.id === id) ? { ...app, status: res.data.status } : app));
+          return;
+        }
+      }
+      // Fallback local update if mock token or offline
+      setApplications(prev => prev.map(app => (app._id === id || app.id === id) ? { ...app, status } : app));
+    } catch (err) {
+      console.warn("Failed to update application status:", err.message);
+      // Fallback local update
+      setApplications(prev => prev.map(app => (app._id === id || app.id === id) ? { ...app, status } : app));
+    }
+  };
+
   const handleLogin = u => {
     setUser(u);
     if (u.token) localStorage.setItem("token", u.token);
@@ -1578,13 +1690,13 @@ export default function StartSync() {
     switch (page) {
       case "collab-dashboard": return <CollabDashboard user={user} onNavigate={navigate} startups={startups} />;
       case "browse": return <BrowsePage savedIds={savedIds} onToggleSave={toggleSave} onMessage={() => navigate("messages")} startups={startups} setApplications={setApplications} />;
-      case "collab-applications": return <ApplicationsPage apps={applications} />;
+      case "collab-applications": return <ApplicationsPage apps={applications} isFounder={false} />;
       case "collab-saved": return <SavedPage savedIds={savedIds} onToggleSave={toggleSave} onNavigate={navigate} />;
       case "messages": return <MessagesPage user={user} />;
       case "profile": return <ProfilePage user={user} onProfileUpdate={updatedUser => setUser(prev => ({ ...prev, ...updatedUser }))} />;
       case "founder-dashboard": return <FounderDashboard user={user} onNavigate={navigate} startups={startups} applications={applications} />;
       case "founder-startups": return <FounderStartupsPage startups={startups} setStartups={setStartups} user={user} />;
-      case "founder-applications": return <ApplicationsPage apps={applications} />;
+      case "founder-applications": return <ApplicationsPage apps={applications} isFounder={true} onStatusUpdate={handleStatusUpdate} />;
       case "founder-team": return <TeamPage />;
       case "admin-dashboard": return <AdminDashboard />;
       case "admin-users": return <AdminDashboard />;
