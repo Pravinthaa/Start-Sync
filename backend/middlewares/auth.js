@@ -14,7 +14,8 @@ const protect = (req, res, next) => {
         
         req.user = {
           id: role === 'Founder' ? 'mock-founder-id' : (role === 'Admin' ? 'mock-admin-id' : 'mock-collab-id'),
-          role: role
+          role: role,
+          isMock: true
         };
         return next();
       }

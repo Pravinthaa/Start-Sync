@@ -42,7 +42,8 @@ const MEMORY_STARTUPS = [
 exports.createStartup = async (req, res) => {
   try {
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       const newStartup = {
         _id: 'mock-sid-' + Math.random().toString(36).substring(2, 9),
         id: Math.floor(Math.random() * 1000) + 10,

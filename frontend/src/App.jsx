@@ -404,6 +404,10 @@ function AuthPage({ type, onNavigate, onLogin }) {
         throw new Error("Invalid response format");
       }
     } catch (err) {
+      if (err.response && err.response.data && err.response.data.message) {
+        setError(err.response.data.message);
+        return;
+      }
       console.warn("MERN auth warning (Backend offline/invalid, falling back to local simulation):", err.message);
       const mockUser = {
         name: form.name || (isLogin ? (form.email.includes("founder") ? "Arjun Sharma" : "Alex Johnson") : "New User"),
@@ -1124,16 +1128,16 @@ function AdminDashboard() {
 }
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
-function ProfilePage({ user }) {
+function ProfilePage({ user, onProfileUpdate }) {
   const [form, setForm] = useState({
     name: user.name,
-    bio: "Full-stack developer with 4 years of experience. Passionate about building products that solve real problems.",
-    skills: "React, Node.js, TypeScript, MongoDB",
-    github: "github.com/alexj",
-    linkedin: "linkedin.com/in/alexj",
-    portfolio: "alexj.dev",
-    location: "Bangalore, India",
-    availability: "20 hrs/week",
+    bio: "",
+    skills: "",
+    github: "",
+    linkedin: "",
+    portfolio: "",
+    location: "",
+    availability: "",
     email: user.email
   });
   const [saved, setSaved] = useState(false);
@@ -1149,13 +1153,13 @@ function ProfilePage({ user }) {
           if (res.data) {
             setForm({
               name: res.data.name || user.name,
-              bio: res.data.bio || "Full-stack developer with 4 years of experience. Passionate about building products that solve real problems.",
-              skills: Array.isArray(res.data.skills) ? res.data.skills.join(", ") : (res.data.skills || "React, Node.js, TypeScript, MongoDB"),
-              github: res.data.github || "github.com/alexj",
-              linkedin: res.data.linkedin || "linkedin.com/in/alexj",
-              portfolio: res.data.portfolio || "alexj.dev",
-              location: res.data.location || "Bangalore, India",
-              availability: res.data.availability || "20 hrs/week",
+              bio: res.data.bio || "",
+              skills: Array.isArray(res.data.skills) ? res.data.skills.join(", ") : (res.data.skills || ""),
+              github: res.data.github || "",
+              linkedin: res.data.linkedin || "",
+              portfolio: res.data.portfolio || "",
+              location: res.data.location || "",
+              availability: res.data.availability || "",
               email: res.data.email || user.email
             });
           }
@@ -1171,14 +1175,20 @@ function ProfilePage({ user }) {
     try {
       const token = localStorage.getItem("token");
       if (token) {
-        await axios.put("http://localhost:5000/api/auth/profile", form, {
+        const res = await axios.put("http://localhost:5000/api/auth/profile", form, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (res.data && onProfileUpdate) {
+          onProfileUpdate(res.data);
+        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       console.warn("MERN profile update warning (Backend not configured/reachable, falling back to local simulation):", err.message);
+      if (onProfileUpdate) {
+        onProfileUpdate(form);
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -1198,7 +1208,7 @@ function ProfilePage({ user }) {
           </div>
           <div>
             <div style={{ fontWeight: 800, color: C.text, fontSize: 18 }}>{form.name}</div>
-            <div style={{ fontSize: 14, color: C.textMuted, marginTop: 4 }}>{user.role} · {form.location}</div>
+            <div style={{ fontSize: 14, color: C.textMuted, marginTop: 4 }}>{user.role}{form.location ? ` · ${form.location}` : ""}</div>
             <div style={{ marginTop: 6 }}><Badge color={C.success} bg={`${C.success}18`}>● Available</Badge></div>
           </div>
         </div>
@@ -1454,6 +1464,43 @@ export default function StartSync() {
   const notifCount = 2;
 
   useEffect(() => {
+    const restoreSession = async () => {
+      const token = localStorage.getItem("token");
+      if (token && !user) {
+        try {
+          if (token.startsWith("mock-token-for-")) {
+            const role = token.replace("mock-token-for-", "");
+            const capitalizedRole = role.charAt(0).toUpperCase() + role.slice(1);
+            setUser({
+              name: capitalizedRole === "Founder" ? "Arjun Sharma" : "Alex Johnson",
+              role: capitalizedRole,
+              email: `${role}@startsync.io`,
+              token
+            });
+            if (capitalizedRole === "Founder") setPage("founder-dashboard");
+            else if (capitalizedRole === "Admin") setPage("admin-dashboard");
+            else setPage("collab-dashboard");
+            return;
+          }
+          const res = await axios.get("http://localhost:5000/api/auth/profile", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data) {
+            setUser({ ...res.data, token });
+            if (res.data.role === "Founder") setPage("founder-dashboard");
+            else if (res.data.role === "Admin") setPage("admin-dashboard");
+            else setPage("collab-dashboard");
+          }
+        } catch (err) {
+          console.warn("Session restore failed:", err.message);
+          localStorage.removeItem("token");
+        }
+      }
+    };
+    restoreSession();
+  }, []);
+
+  useEffect(() => {
     const loadData = async () => {
       try {
         const startupsRes = await axios.get("http://localhost:5000/api/startups");
@@ -1534,7 +1581,7 @@ export default function StartSync() {
       case "collab-applications": return <ApplicationsPage apps={applications} />;
       case "collab-saved": return <SavedPage savedIds={savedIds} onToggleSave={toggleSave} onNavigate={navigate} />;
       case "messages": return <MessagesPage user={user} />;
-      case "profile": return <ProfilePage user={user} />;
+      case "profile": return <ProfilePage user={user} onProfileUpdate={updatedUser => setUser(prev => ({ ...prev, ...updatedUser }))} />;
       case "founder-dashboard": return <FounderDashboard user={user} onNavigate={navigate} startups={startups} applications={applications} />;
       case "founder-startups": return <FounderStartupsPage startups={startups} setStartups={setStartups} user={user} />;
       case "founder-applications": return <ApplicationsPage apps={applications} />;

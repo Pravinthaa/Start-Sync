@@ -147,7 +147,8 @@ exports.login = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       const user = MEMORY_USERS.find(u => u._id === req.user.id);
       if (user) {
         return res.json(user);
@@ -171,7 +172,8 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       const user = MEMORY_USERS.find(u => u._id === req.user.id) || MEMORY_USERS[0];
       if (user) {
         user.name = req.body.name || user.name;

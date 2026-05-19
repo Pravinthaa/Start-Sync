@@ -21,7 +21,8 @@ exports.applyToStartup = async (req, res) => {
     const { startupId, role, coverMessage, portfolioLinks, resumeLink, optionalNote } = req.body;
 
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id) || !mongoose.Types.ObjectId.isValid(startupId);
+    if (isMock) {
       const newApp = {
         _id: 'mock-appid-' + Math.random().toString(36).substring(2, 9),
         startup: startupId,
@@ -66,7 +67,8 @@ exports.applyToStartup = async (req, res) => {
 exports.getMyApplications = async (req, res) => {
   try {
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       // Return memory apps populated with mock structures
       return res.json(MEMORY_APPLICATIONS.map(app => ({
         ...app,
@@ -87,7 +89,8 @@ exports.getMyApplications = async (req, res) => {
 exports.getStartupApplications = async (req, res) => {
   try {
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       return res.json(MEMORY_APPLICATIONS.map(app => ({
         ...app,
         applicant: typeof app.applicant === 'object' ? app.applicant : { _id: app.applicant, name: "Alex Johnson", email: "collaborator@startsync.io", skills: ["React", "Node.js"], avatar: "AJ" },
@@ -109,7 +112,8 @@ exports.updateApplicationStatus = async (req, res) => {
     const { status } = req.body;
 
     const isDbConnected = mongoose.connection.readyState === 1;
-    if (!isDbConnected) {
+    const isMock = !isDbConnected || (req.user && req.user.isMock) || !mongoose.Types.ObjectId.isValid(req.user.id);
+    if (isMock) {
       const application = MEMORY_APPLICATIONS.find(app => app._id === req.params.id);
       if (!application) return res.status(404).json({ message: 'Application not found' });
       application.status = status;
